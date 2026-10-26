@@ -1,0 +1,50 @@
+# Закрытые сборки CubeXCraft: исходники в payload.bin (AES-256, ключ — секрет репо), результат и журнал сборки
+# тоже шифруются перед выгрузкой. В открытом виде здесь — только этот файл.
+name: build
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: windows }
+          - { os: macos-latest, target: macos }
+          - { os: ubuntu-22.04, target: linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: build
+        shell: bash
+        env:
+          SRC_KEY: ${{ secrets.SRC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          OSSL=openssl
+          [ "$RUNNER_OS" = macOS ] && OSSL="$(brew --prefix openssl@3)/bin/openssl"
+          export K="$(printf %s "$SRC_KEY" | tr -d '\r\n')"
+          mkdir -p w out
+          "$OSSL" enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:K -in payload.bin | tar xz -C w
+          rc=0
+          bash w/ci/build.sh "${{ matrix.target }}" "$PWD/out" > out/build.log 2>&1 || rc=$?
+          tar cz -C out . | "$OSSL" enc -e -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:K -out result.bin
+          rm -rf w out
+          echo "rc=$rc"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.target }}
+          path: result.bin
+          if-no-files-found: ignore
+          retention-days: 3
