@@ -16,6 +16,7 @@ jobs:
           - { os: windows-latest, target: windows }
           - { os: macos-latest, target: macos }
           - { os: ubuntu-22.04, target: linux }
+          - { os: ubuntu-22.04-arm, target: linux-arm }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
